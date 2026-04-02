@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "concurrently \"node server/index.js\" \"npm --prefix client run dev\"",
     "start": "NODE_ENV=production node server/index.js",
-    "build": "npm --prefix client install && npm --prefix client run build"
+    "build": "npm --prefix client install && npm --prefix client run build",
+    "postinstall": "npm --prefix client install"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.36.3",
