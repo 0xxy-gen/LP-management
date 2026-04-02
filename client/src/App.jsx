@@ -1,12 +1,14 @@
 import { useState, useCallback } from 'react';
 import FolderSelect from './components/FolderSelect';
 import Progress from './components/Progress';
+import LinkedInImport from './components/LinkedInImport';
 import { resizeToBase64 } from './utils/imageResize';
 
 const NOTION_DB_URL = 'https://www.notion.so/31b91a1ce62c805eb39afa8053d7828a';
-const MAX_CONCURRENT = 5;
+const MAX_CONCURRENT = 1;
 
 export default function App() {
+  const [tab, setTab] = useState('namecard');
   const [items, setItems] = useState([]);
   const [running, setRunning] = useState(false);
 
@@ -105,13 +107,21 @@ export default function App() {
       </header>
 
       <div style={styles.container}>
-        <FolderSelect onFiles={handleFiles} disabled={running} />
-        {items.length > 0 && (
-          <Progress
-            items={items}
-            onOpen={() => window.open(NOTION_DB_URL, '_blank')}
-          />
+        <div style={styles.tabs}>
+          <button style={{ ...styles.tab, ...(tab === 'namecard' ? styles.tabActive : {}) }} onClick={() => setTab('namecard')}>📇 Namecards</button>
+          <button style={{ ...styles.tab, ...(tab === 'linkedin' ? styles.tabActive : {}) }} onClick={() => setTab('linkedin')}>in LinkedIn</button>
+        </div>
+
+        {tab === 'namecard' && (
+          <>
+            <FolderSelect onFiles={handleFiles} disabled={running} />
+            {items.length > 0 && (
+              <Progress items={items} onOpen={() => window.open(NOTION_DB_URL, '_blank')} />
+            )}
+          </>
         )}
+
+        {tab === 'linkedin' && <LinkedInImport />}
       </div>
     </div>
   );
@@ -128,4 +138,7 @@ const styles = {
   h1: { fontSize: 26, fontWeight: 600, color: '#fff', margin: '0 0 6px' },
   sub: { fontSize: 13, color: '#555', margin: 0 },
   container: { width: '100%', maxWidth: 640, display: 'flex', flexDirection: 'column', gap: 20 },
+  tabs: { display: 'flex', gap: 8 },
+  tab: { background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, color: '#666', fontSize: 13, padding: '8px 16px', cursor: 'pointer' },
+  tabActive: { background: '#222', border: '1px solid #444', color: '#ccc' },
 };

@@ -12,6 +12,7 @@
     "@anthropic-ai/sdk": "^0.36.3",
     "@google/generative-ai": "^0.24.1",
     "@notionhq/client": "^2.2.15",
+    "axios": "^1.14.0",
     "concurrently": "^8.2.2",
     "express": "^4.18.2",
     "jimp": "^1.6.0",

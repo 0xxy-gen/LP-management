@@ -20,6 +20,7 @@ const PORT = process.env.PORT || 3001;
 
 app.use('/api/extract', require('./routes/extract'));
 app.use('/api/notion', require('./routes/notion'));
+app.use('/api/linkedin', require('./routes/linkedin'));
 
 // Serve built frontend in production
 if (process.env.NODE_ENV === 'production') {

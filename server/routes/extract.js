@@ -16,35 +16,33 @@ const upload = multer({
   },
 });
 
-const EXTRACT_PROMPT = `Extract contact information from this business card image.
-Return ONLY valid JSON — no markdown, no explanation:
-{
-  "name": null,
-  "title": null,
-  "company": null,
-  "emails": [],
-  "phones": [],
-  "address": null,
-  "website": null,
-  "linkedin": null,
-  "notes": null,
-  "flags": []
-}
-Rules:
-- Use null for any field you cannot find. Use [] for empty arrays.
-- Put ALL emails in "emails", ALL phone numbers in "phones".
-- In "flags", list issues as strings. Use only these values:
-  "name_unclear", "email_partial", "phone_ambiguous",
-  "multiple_contacts", "card_blurry", "text_obscured",
-  "non_english", "handwritten_additions"
-- If the image is not a business card, set all fields to null/[]
-  and add "not_a_card" to flags.`;
+const EXTRACT_PROMPT = `Extract contact info from this business card. Return JSON only:
+{"name":null,"title":null,"company":null,"emails":[],"phones":[],"address":null,"website":null,"linkedin":null,"notes":null,"flags":[]}
+- null if not found, [] for empty arrays. All emails→emails, all phones→phones.
+- flags: "name_unclear","email_partial","phone_ambiguous","multiple_contacts","card_blurry","text_obscured","non_english","handwritten_additions","not_a_card"`;
 
 const LP_TYPES = [
   'Institutional Investor', 'Family Office', 'Fund of Funds',
   'Pension Fund', 'Sovereign Wealth Fund', 'Endowment',
   'Corporate VC', 'Angel / HNWI',
 ];
+
+// --- Retry helper for 429 rate limits ---
+
+async function withRetry(fn, maxRetries = 5) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const is429 = err?.status === 429 || err?.message?.includes('429');
+      if (!is429 || i === maxRetries - 1) throw err;
+      // Wait at least 10s on rate limit, doubling each retry
+      const ms = Math.max(10000, 1000 * 2 ** i);
+      console.log(`Rate limited, retrying in ${Math.round(ms / 1000)}s...`);
+      await new Promise(r => setTimeout(r, ms));
+    }
+  }
+}
 
 // --- QR Code decoding ---
 
@@ -115,31 +113,16 @@ function mergeQRData(card, qrData) {
 async function enrichContact(name, company, title, existingAddress) {
   if (!company && !name) return { lp_type: null, investment_focus: null, geography: null };
 
-  const prompt = `You are classifying a potential LP (Limited Partner) for a venture capital fund.
+  const prompt = `Classify this LP contact for a VC fund. Return JSON only:
+{"lp_type":null,"investment_focus":null,"geography":null}
+Person: ${[name, title, company, existingAddress].filter(Boolean).join(' | ')}
+lp_type: one of ${LP_TYPES.join('/')} or null. investment_focus: ≤10 words or null. geography: HQ city/country or null. Use null if unsure.`;
 
-Person: ${name || 'Unknown'}
-Title: ${title || 'Unknown'}
-Company: ${company || 'Unknown'}
-Known address: ${existingAddress || 'None'}
-
-Based on your knowledge of this organization, return ONLY valid JSON:
-{
-  "lp_type": null,
-  "investment_focus": null,
-  "geography": null
-}
-
-Rules:
-- "lp_type" must be exactly one of: ${LP_TYPES.map(t => `"${t}"`).join(', ')}, or null if unknown.
-- "investment_focus" is a short phrase (max 15 words) describing what they invest in, or null if unknown.
-- "geography" is the city/country of their headquarters (e.g. "Geneva, Switzerland"), or null if unknown. Only fill this if you are confident — do not guess.
-- Use null if you are not confident.`;
-
-  const response = await openai.chat.completions.create({
+  const response = await withRetry(() => openai.chat.completions.create({
     model: 'gpt-4o-mini',
     max_tokens: 256,
     messages: [{ role: 'user', content: prompt }],
-  });
+  }));
 
   const text = response.choices[0].message.content.trim();
   const clean = text.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '').trim();
@@ -157,17 +140,17 @@ router.post('/', upload.single('image'), async (req, res) => {
 
     // Step 1: Decode QR code if present (runs in parallel with vision)
     const [extractRes, qrData] = await Promise.all([
-      openai.chat.completions.create({
+      withRetry(() => openai.chat.completions.create({
         model: 'gpt-4o-mini',
-        max_tokens: 1024,
+        max_tokens: 400,
         messages: [{
           role: 'user',
           content: [
-            { type: 'image_url', image_url: { url: dataUrl, detail: 'high' } },
+            { type: 'image_url', image_url: { url: dataUrl, detail: 'low' } },
             { type: 'text', text: EXTRACT_PROMPT },
           ],
         }],
-      }),
+      })),
       decodeQR(req.file.buffer),
     ]);
 
